@@ -8,9 +8,12 @@ Jogo de festa em que a galera tenta acertar os itens de um **top 10** sorteado p
 2. Um jogador é sorteado para começar. Na sua vez, ele **fala em voz alta** um nome que ele acha que está no top 10.
 3. Se alguém achar que o nome não está na lista, aperta **DUVIDO!** e escolhe: quem duvidou, de quem duvidou e qual foi a resposta.
 4. O sistema confere:
-   - **Quem duvidou estava certo** (o nome não está no top 10) → o duvidado perde 1 vida, o duvidador **ganha** 1 vida, a carta é descartada e começa uma rodada nova.
-   - **Quem duvidou estava errado** (o nome está no top 10) → só o duvidador perde 1 vida e o jogo continua no mesmo tema.
-5. Todo mundo começa com **4 vidas**. Quem zera é eliminado. **Vence o último de pé.**
+   - **Quem duvidou estava certo** (o nome não está no top 10) → o duvidado perde 1 vida, o duvidador **marca 1 ponto**, a carta é descartada e começa uma rodada nova.
+   - **Quem duvidou estava errado** (o nome está no top 10) → só o duvidador perde 1 vida, sem ponto, e o jogo continua no mesmo tema.
+5. São **duas contagens separadas**:
+   - **Vidas** (corações, embaixo da carta): todo mundo começa com 4. Quem zera é eliminado.
+   - **Pontos** (medalha no canto da carta): só se ganha duvidando e acertando.
+6. **Vence quem chegar a 4 pontos primeiro** — ou quem sobrar de pé, se todos os outros forem eliminados antes.
 
 Quem virar a carta vira o juiz da rodada e consegue ver a lista — os outros não deveriam olhar. 😉
 
