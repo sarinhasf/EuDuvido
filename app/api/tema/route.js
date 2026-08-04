@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { CATEGORIAS, TEMAS_RESERVA } from '../../../lib/categorias';
-import { limparItem, normalizar } from '../../../lib/matcher';
+import { CATEGORIAS, EIXOS, TEMAS_RESERVA } from '../../../lib/categorias';
+import { jaApareceu } from '../../../lib/similaridade';
+import { extrairJson, validarLote } from '../../../lib/validarTema';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -9,163 +10,136 @@ const URL_GROQ = 'https://api.groq.com/openai/v1/chat/completions';
 const MODELO_PADRAO = 'llama-3.3-70b-versatile';
 const MAX_TENTATIVAS = 3;
 
+/** Quantos temas pedir por chamada. Um lote inteiro de uma vez resolve dois
+ *  problemas: obriga o modelo a variar dentro da propria resposta (ele ve os
+ *  irmaos enquanto escreve) e rende varias rodadas sem nova chamada. */
+const TEMAS_POR_LOTE = 6;
+
 /* ------------------------------------------------------------------ *
  * PROMPT
  * ------------------------------------------------------------------ */
 
 const SISTEMA = `Voce e o mestre de cerimonias de um jogo de festa brasileiro chamado "Eu Duvido!".
-Sua unica funcao e sortear UM tema de ranking "Top 10" e devolver a lista dos 10 itens correspondentes.
+Sua funcao e sortear temas de ranking "Top 10" e devolver a lista dos 10 itens de cada um.
 
-REGRAS OBRIGATORIAS:
-1. Responda SOMENTE com um objeto JSON valido. Nada de markdown, crases, comentarios ou texto fora do JSON.
-2. Use exatamente este formato: {"tema": "Top 10 ...", "top10": ["item 1", "item 2", ..., "item 10"]}
-3. O array "top10" deve ter EXATAMENTE 10 strings, ordenadas do 1o ao 10o lugar (indice 0 = 1o lugar).
-4. Cada item deve ser APENAS o nome, curto e reconhecivel, com no maximo 4 palavras.
-   PROIBIDO dentro dos itens: numeros de posicao, parenteses, anos, estatisticas, explicacoes, emojis, pontuacao decorativa.
-5. Os 10 itens devem ser distintos entre si. Nunca repita o mesmo nome nem duas variacoes do mesmo nome.
-6. O campo "tema" deve comecar com "Top 10", ter no maximo 12 palavras e descrever um ranking OBJETIVO e VERIFICAVEL.
-   PROIBIDO temas de gosto pessoal ("mais gostosos", "mais bonitos", "melhores de todos os tempos na sua opiniao").
-7. O tema precisa ser de cultura geral acessivel: um grupo de amigos brasileiros tem que conseguir chutar nomes.
-   Evite temas de nicho, tecnicos ou que dependam de dados muito recentes.
-8. Escreva TUDO em portugues do Brasil.
-9. Nao invente dados. Se voce nao tem certeza dos 10 nomes de um ranking, escolha OUTRO tema que voce domine.
-10. Nunca repita um tema que aparecer na lista de temas ja usados enviada pelo usuario.
+FORMATO (obrigatorio):
+1. Responda SOMENTE com um objeto JSON valido. Nada de markdown, crases ou texto fora do JSON.
+2. Formato exato: {"temas": [{"tema": "Top 10 ...", "top10": ["item 1", ..., "item 10"]}, ...]}
+3. Cada "top10" deve ter EXATAMENTE 10 strings, do 1o ao 10o lugar.
+4. Cada item e APENAS o nome, curto e reconhecivel, no maximo 4 palavras.
+   PROIBIDO dentro dos itens: numeros de posicao, parenteses, anos, estatisticas, explicacoes, emojis.
+5. Os 10 itens de uma lista devem ser distintos entre si.
+6. Escreva TUDO em portugues do Brasil.
 
-Exemplo de resposta valida (apenas o formato, gere um tema diferente):
-{"tema":"Top 10 maiores campeoes do Brasileirao","top10":["Palmeiras","Flamengo","Santos","Corinthians","Sao Paulo","Fluminense","Cruzeiro","Vasco da Gama","Internacional","Gremio"]}`;
+QUALIDADE DO TEMA:
+7. O campo "tema" comeca com "Top 10", tem no maximo 12 palavras e descreve um ranking OBJETIVO.
+   PROIBIDO gosto pessoal ("mais gostosos", "mais bonitos", "melhores de todos os tempos").
+8. Cultura geral acessivel: um grupo de amigos brasileiros tem que conseguir chutar nomes.
+   Evite nicho tecnico e dados muito recentes.
+9. Nao invente. Se voce nao tem certeza dos 10 nomes, troque de tema.
 
-function montarPromptUsuario(categoria, temasUsados, semente) {
+VARIEDADE (a parte mais importante):
+10. Os temas do lote devem ser de assuntos COMPLETAMENTE diferentes entre si.
+    Nada de dois temas de esporte, nem dois de musica, nem dois de geografia no mesmo lote.
+11. Fuja do obvio. Rankings de futebol, paises mais populosos e maiores rios ja apareceram
+    demais neste jogo - so use se o pedido apontar explicitamente pra isso.
+12. Varie o TIPO de ranking: tamanho, idade, velocidade, preco, quantidade, fama, ordem
+    cronologica. Nao faca o lote inteiro de "os maiores".
+13. Prefira o inesperado ao seguro: temas que arrancam um "boa!" da mesa valem mais
+    que o ranking que todo mundo ja sabe de cor.
+14. NUNCA repita nem crie variacao dos temas ja usados que o usuario listar.
+
+Exemplo do formato (gere temas diferentes destes):
+{"temas":[{"tema":"Top 10 maiores campeoes do Brasileirao","top10":["Palmeiras","Flamengo","Santos","Corinthians","Sao Paulo","Fluminense","Cruzeiro","Vasco da Gama","Internacional","Gremio"]}]}`;
+
+/** Sorteia n itens distintos de uma lista. */
+function sortear(lista, n) {
+  const copia = [...lista];
+  const escolhidos = [];
+  while (escolhidos.length < n && copia.length) {
+    escolhidos.push(copia.splice(Math.floor(Math.random() * copia.length), 1)[0]);
+  }
+  return escolhidos;
+}
+
+function montarPromptUsuario(pedidos, temasUsados) {
+  const roteiro = pedidos
+    .map((p, i) => `${i + 1}. Assunto: ${p.categoria} — Angulo: ${p.eixo}`)
+    .join('\n');
+
   const usados = temasUsados.length
-    ? `Temas JA USADOS nesta sessao (nao repita nenhum deles nem versoes parecidas):\n${temasUsados
+    ? `\nTEMAS JA USADOS (nao repita nenhum, nem versao parecida do mesmo assunto):\n${temasUsados
         .map((t) => `- ${t}`)
         .join('\n')}`
-    : 'Nenhum tema foi usado ainda nesta sessao.';
+    : '';
 
-  return `Sorteie um novo tema para a rodada.
+  return `Gere ${pedidos.length} temas para as proximas rodadas.
 
-Categoria sugerida desta rodada: ${categoria}
-Semente de aleatoriedade (use para variar, nao coloque na resposta): ${semente}
+Siga este roteiro, um tema por linha — o assunto e o angulo sao obrigatorios,
+mas voce escolhe o recorte exato dentro deles:
 
+${roteiro}
 ${usados}
 
 Responda apenas com o objeto JSON.`;
 }
 
 /* ------------------------------------------------------------------ *
- * VALIDACAO
- * ------------------------------------------------------------------ */
-
-function extrairJson(texto) {
-  if (!texto) return null;
-  const limpo = String(texto)
-    .replace(/^\s*```(?:json)?/i, '')
-    .replace(/```\s*$/, '')
-    .trim();
-  try {
-    return JSON.parse(limpo);
-  } catch {
-    // ultimo recurso: pegar o primeiro objeto entre chaves
-    const inicio = limpo.indexOf('{');
-    const fim = limpo.lastIndexOf('}');
-    if (inicio === -1 || fim <= inicio) return null;
-    try {
-      return JSON.parse(limpo.slice(inicio, fim + 1));
-    } catch {
-      return null;
-    }
-  }
-}
-
-/** Devolve { ok, tema, erro }. Rejeita tudo que quebraria a conferencia da resposta. */
-export function validarTema(bruto, temasUsados = []) {
-  if (!bruto || typeof bruto !== 'object') return { ok: false, erro: 'resposta nao e objeto' };
-
-  let tema = typeof bruto.tema === 'string' ? bruto.tema.trim() : '';
-  const lista = bruto.top10 ?? bruto.top_10 ?? bruto.itens;
-
-  if (!tema) return { ok: false, erro: 'tema vazio' };
-  if (!Array.isArray(lista)) return { ok: false, erro: 'top10 nao e array' };
-
-  if (!/^top\s*10/i.test(tema)) tema = `Top 10 ${tema.replace(/^top\s*\d+\s*/i, '')}`.trim();
-
-  const itens = lista
-    .map((item) => {
-      if (typeof item === 'string') return limparItem(item);
-      if (item && typeof item === 'object') {
-        return limparItem(item.nome ?? item.item ?? item.titulo ?? '');
-      }
-      return '';
-    })
-    .map((s) => s.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
-
-  if (itens.length !== 10) return { ok: false, erro: `esperava 10 itens, veio ${itens.length}` };
-  if (itens.some((i) => i.length > 60 || i.split(' ').length > 6)) {
-    return { ok: false, erro: 'item longo demais' };
-  }
-
-  const vistos = new Set();
-  for (const item of itens) {
-    const chave = normalizar(item);
-    if (!chave) return { ok: false, erro: 'item vazio apos limpeza' };
-    if (vistos.has(chave)) return { ok: false, erro: `item repetido: ${item}` };
-    vistos.add(chave);
-  }
-
-  const jaUsado = temasUsados.some((t) => normalizar(t) === normalizar(tema));
-  if (jaUsado) return { ok: false, erro: 'tema repetido' };
-
-  return { ok: true, tema: { tema, top10: itens } };
-}
-
-/* ------------------------------------------------------------------ *
  * HANDLER
  * ------------------------------------------------------------------ */
 
-async function chamarGroq({ chave, modelo, categoria, temasUsados, semente }) {
+async function chamarGroq({ chave, modelo, pedidos, temasUsados }) {
   const resposta = await fetch(URL_GROQ, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${chave}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: modelo,
       messages: [
         { role: 'system', content: SISTEMA },
-        { role: 'user', content: montarPromptUsuario(categoria, temasUsados, semente) },
+        { role: 'user', content: montarPromptUsuario(pedidos, temasUsados) },
       ],
       response_format: { type: 'json_object' },
-      temperature: 1,
+      temperature: 1.15, // alto de proposito: o que queremos aqui e variedade
       top_p: 0.95,
-      max_tokens: 700,
+      // penaliza repetir palavras ja escritas -> empurra os temas do lote
+      // pra assuntos diferentes uns dos outros
+      frequency_penalty: 0.5,
+      presence_penalty: 0.6,
+      max_tokens: 3000,
     }),
-    // nao deixa uma chamada lenta travar a rodada
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(30000),
   });
 
   const dados = await resposta.json().catch(() => null);
-
-  if (!resposta.ok) {
-    const msg = dados?.error?.message ?? `HTTP ${resposta.status}`;
-    throw new Error(msg);
-  }
-
+  if (!resposta.ok) throw new Error(dados?.error?.message ?? `HTTP ${resposta.status}`);
   return dados?.choices?.[0]?.message?.content ?? '';
 }
 
-function temaDeReserva(temasUsados) {
-  const disponiveis = TEMAS_RESERVA.filter(
-    (t) => !temasUsados.some((u) => normalizar(u) === normalizar(t.tema)),
-  );
-  const pool = disponiveis.length ? disponiveis : TEMAS_RESERVA;
-  return pool[Math.floor(Math.random() * pool.length)];
+function temasDeReserva(temasUsados) {
+  const disponiveis = TEMAS_RESERVA.filter((t) => !jaApareceu(t.tema, temasUsados));
+  if (disponiveis.length) {
+    return sortear(disponiveis, Math.min(TEMAS_POR_LOTE, disponiveis.length));
+  }
+
+  // Acabaram os inéditos (so acontece jogando muito tempo sem chave da API).
+  // Em vez de sortear a esmo, devolve os que sairam ha MAIS tempo - assim a
+  // repeticao demora o maximo possivel a ser percebida na mesa.
+  const ultimoUso = (tema) => {
+    for (let i = temasUsados.length - 1; i >= 0; i -= 1) {
+      if (jaApareceu(tema, [temasUsados[i]])) return i;
+    }
+    return -1;
+  };
+
+  return [...TEMAS_RESERVA]
+    .sort((a, b) => ultimoUso(a.tema) - ultimoUso(b.tema))
+    .slice(0, TEMAS_POR_LOTE);
 }
 
 export async function POST(request) {
   const corpo = await request.json().catch(() => ({}));
   const temasUsados = Array.isArray(corpo?.temasUsados)
-    ? corpo.temasUsados.filter((t) => typeof t === 'string').slice(-25)
+    ? corpo.temasUsados.filter((t) => typeof t === 'string').slice(-80)
     : [];
 
   const chave = process.env.GROQ_API_KEY;
@@ -174,7 +148,7 @@ export async function POST(request) {
   if (!chave) {
     return NextResponse.json(
       {
-        ...temaDeReserva(temasUsados),
+        temas: temasDeReserva(temasUsados),
         origem: 'reserva',
         aviso:
           'GROQ_API_KEY nao configurada. Copie .env.local.example para .env.local e coloque sua chave para sortear temas novos.',
@@ -186,29 +160,30 @@ export async function POST(request) {
   const erros = [];
 
   for (let tentativa = 1; tentativa <= MAX_TENTATIVAS; tentativa += 1) {
-    const categoria = CATEGORIAS[Math.floor(Math.random() * CATEGORIAS.length)];
-    const semente = Math.random().toString(36).slice(2, 10);
+    // categorias distintas + angulos distintos: o roteiro ja nasce variado,
+    // sem depender da boa vontade do modelo
+    const categorias = sortear(CATEGORIAS, TEMAS_POR_LOTE);
+    const eixos = sortear(EIXOS, TEMAS_POR_LOTE);
+    const pedidos = categorias.map((categoria, i) => ({ categoria, eixo: eixos[i] }));
 
     try {
-      const conteudo = await chamarGroq({ chave, modelo, categoria, temasUsados, semente });
-      const bruto = extrairJson(conteudo);
-      const validado = validarTema(bruto, temasUsados);
+      const conteudo = await chamarGroq({ chave, modelo, pedidos, temasUsados });
+      const { temas, erros: errosLote } = validarLote(extrairJson(conteudo), temasUsados);
 
-      if (validado.ok) {
-        return NextResponse.json({ ...validado.tema, origem: 'groq' }, { status: 200 });
+      if (temas.length) {
+        return NextResponse.json({ temas, origem: 'groq' }, { status: 200 });
       }
-      erros.push(`tentativa ${tentativa}: ${validado.erro}`);
+      erros.push(`tentativa ${tentativa}: nenhum tema valido (${errosLote.join('; ')})`);
     } catch (e) {
       erros.push(`tentativa ${tentativa}: ${e.message}`);
     }
   }
 
-  // A API respondeu mal 3 vezes: entrega um tema de reserva para o jogo nao parar.
   return NextResponse.json(
     {
-      ...temaDeReserva(temasUsados),
+      temas: temasDeReserva(temasUsados),
       origem: 'reserva',
-      aviso: `Nao consegui um tema valido do Groq (${erros.join(' | ')}). Usando um tema reserva.`,
+      aviso: `Nao consegui temas novos do Groq (${erros.join(' | ')}). Usando temas reserva.`,
     },
     { status: 200 },
   );

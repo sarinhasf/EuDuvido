@@ -44,6 +44,15 @@ A chave fica **só no servidor**, em `.env.local` (que está no `.gitignore`). O
 
 Se a chave não estiver configurada, ou se o Groq falhar, o jogo **não trava**: ele cai numa lista de temas reserva em `lib/categorias.js` e avisa na tela.
 
+## Como o jogo evita perguntas repetidas
+
+Modelo de linguagem, deixado por conta própria, volta sempre aos mesmos rankings. Quatro mecanismos empurram contra isso:
+
+1. **Roteiro sorteado no servidor.** Cada rodada combina uma das ~70 categorias com um dos 20 ângulos de ranking (`os mais antigos`, `os mais caros`, `os primeiros da história`…). São ~1400 combinações, e o modelo recebe o cruzamento pronto em vez de escolher o assunto sozinho.
+2. **Lote em vez de unidade.** A API pede 6 temas por chamada. Como o modelo enxerga os irmãos enquanto escreve, ele é forçado a variar dentro da própria resposta — e ainda rende 6 rodadas sem nova chamada.
+3. **Filtro de semelhança.** `lib/similaridade.js` compara os temas por radical de palavra, não por igualdade de string. Isso pega a repetição disfarçada: *"Top 10 maiores rios do mundo"* e *"Top 10 rios mais extensos do mundo"* são detectados como o mesmo tema.
+4. **Histórico que atravessa partidas.** Os temas usados sobrevivem a `Jogar de novo` e a `Trocar jogadores` — sem isso a partida seguinte repetiria exatamente as perguntas da anterior.
+
 ## Adicionando jogadores
 
 O número máximo de jogadores é **a quantidade de imagens em `public/img/cartas`**. Para caber mais gente, é só jogar mais PNGs nessa pasta — nada no código precisa mudar. O sistema lê a pasta no servidor e ordena naturalmente (`carta2` antes de `carta10`).

@@ -11,6 +11,7 @@ import FavoriteRoundedIcon from '@mui/icons-material/FavoriteRounded';
 import HeartBrokenRoundedIcon from '@mui/icons-material/HeartBrokenRounded';
 import EmojiEventsRoundedIcon from '@mui/icons-material/EmojiEventsRounded';
 import MilitaryTechRoundedIcon from '@mui/icons-material/MilitaryTechRounded';
+import CheckRoundedIcon from '@mui/icons-material/CheckRounded';
 import SentimentVeryDissatisfiedRoundedIcon from '@mui/icons-material/SentimentVeryDissatisfiedRounded';
 import { useAudio } from '../lib/AudioProvider';
 
@@ -29,6 +30,9 @@ export default function ResultadoDuvido({ duvido, onContinuar }) {
     pontosDuvidador,
     posicao,
     item,
+    tema,
+    top10 = [],
+    posicoesReveladas = [],
   } = duvido;
 
   const cor = duvidadorAcertou ? 'var(--verde)' : 'var(--vermelho)';
@@ -111,6 +115,13 @@ export default function ResultadoDuvido({ duvido, onContinuar }) {
             )}
           </Stack>
 
+          {/* A carta vai ser descartada: mostra o top 10 antes de sumir.
+              Quando o duvidador ERRA a carta continua na mesa, entao revelar
+              a lista aqui estragaria o resto da rodada. */}
+          {duvidadorAcertou && top10.length > 0 && (
+            <ListaRevelada tema={tema} top10={top10} reveladas={posicoesReveladas} />
+          )}
+
           <Button
             variant="contained"
             color="primary"
@@ -162,5 +173,92 @@ function LinhaPlacar({ nome, delta, texto, ponto = false }) {
         {texto}
       </Typography>
     </Stack>
+  );
+}
+
+/** O top 10 da carta que acabou de ser descartada. */
+function ListaRevelada({ tema, top10, reveladas = [] }) {
+  const jaSaiu = new Set(reveladas);
+
+  return (
+    <Box
+      sx={{
+        width: '100%',
+        p: 1.5,
+        borderRadius: 3,
+        bgcolor: 'rgba(0,0,0,.3)',
+        border: '1px solid rgba(255,201,60,.22)',
+      }}
+    >
+      <Typography
+        sx={{
+          fontFamily: 'var(--font-titulo)',
+          fontWeight: 800,
+          fontSize: '.8rem',
+          color: 'var(--dourado)',
+          mb: 1,
+        }}
+      >
+        {tema || 'A resposta era'}
+      </Typography>
+
+      <Stack spacing={0.3} sx={{ maxHeight: 210, overflowY: 'auto', pr: 0.5 }}>
+        {top10.map((nome, i) => {
+          const acertado = jaSaiu.has(i + 1);
+          return (
+            <Stack
+              key={`${nome}-${i}`}
+              direction="row"
+              spacing={0.75}
+              sx={{
+                alignItems: 'center',
+                px: 0.75,
+                py: 0.3,
+                borderRadius: 1,
+                bgcolor: acertado ? 'rgba(61,214,140,.16)' : 'rgba(255,255,255,.04)',
+              }}
+            >
+              <Box
+                sx={{
+                  flexShrink: 0,
+                  width: 19,
+                  height: 19,
+                  borderRadius: '50%',
+                  display: 'grid',
+                  placeItems: 'center',
+                  bgcolor: 'var(--dourado)',
+                  color: 'var(--roxo-escuro)',
+                  fontFamily: 'var(--font-titulo)',
+                  fontWeight: 800,
+                  fontSize: '.66rem',
+                }}
+              >
+                {i + 1}
+              </Box>
+              <Typography
+                noWrap
+                sx={{
+                  flex: 1,
+                  textAlign: 'left',
+                  fontSize: '.8rem',
+                  fontWeight: 700,
+                  color: 'var(--creme)',
+                  opacity: acertado ? 0.7 : 1,
+                }}
+              >
+                {nome}
+              </Typography>
+              {acertado && <CheckRoundedIcon sx={{ fontSize: 15, color: 'var(--verde)' }} />}
+            </Stack>
+          );
+        })}
+      </Stack>
+
+      {reveladas.length > 0 && (
+        <Typography variant="caption" sx={{ color: 'rgba(255,246,224,.5)', mt: 1, display: 'block' }}>
+          Marcados em verde: o que a mesa acertou nesta rodada.
+        </Typography>
+      )}
+    </Box>
   );
 }

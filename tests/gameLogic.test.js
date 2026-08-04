@@ -10,7 +10,7 @@ function partidaCom(nomes) {
   estado = reducer(estado, { type: 'SORTEAR_INICIAL', indice: 0 });
   return reducer(estado, {
     type: 'DEFINIR_TEMA',
-    tema: { tema: 'Top 10 teste', top10: ['A', 'B', 'C'] },
+    tema: { tema: 'Top 10 teste', top10: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] },
   });
 }
 
@@ -81,6 +81,40 @@ test('carta nova NAO fecha a tela de resultado', () => {
   // so o botao Continuar fecha
   e = reducer(e, { type: 'LIMPAR_DUVIDO' });
   assert.equal(e.ultimoDuvido, null);
+});
+
+test('o resultado leva o top 10 junto (a carta vai ser descartada)', () => {
+  let e = partidaCom(['Ana', 'Bia']);
+  e = duvidar(e, 'j1', 'j0', false); // duvidou certo -> carta descartada
+
+  assert.equal(e.ultimoDuvido.tema, 'Top 10 teste');
+  assert.equal(e.ultimoDuvido.top10.length, 10, 'a lista viaja com o resultado');
+  assert.equal(e.ultimoDuvido.top10[0], 'A');
+
+  // a carta nova chega e nao pode apagar a lista que esta sendo lida
+  e = reducer(e, { type: 'DEFINIR_TEMA', tema: { tema: 'Top 10 outro', top10: ['Z'] } });
+  assert.equal(e.ultimoDuvido.top10.length, 10);
+  assert.equal(e.ultimoDuvido.tema, 'Top 10 teste', 'e o tema antigo, nao o novo');
+});
+
+test('marca na lista o que a mesa ja tinha acertado na rodada', () => {
+  let e = partidaCom(['Ana', 'Bia', 'Caio']);
+  e = duvidar(e, 'j1', 'j0', true, 3); // duvidou errado: 'X' estava em 3o
+  e = reducer(e, { type: 'LIMPAR_DUVIDO' });
+  e = duvidar(e, 'j2', 'j0', true, 7); // errou de novo: outro acerto, 7o
+  e = reducer(e, { type: 'LIMPAR_DUVIDO' });
+  e = duvidar(e, 'j1', 'j0', false); // agora acertou ao duvidar
+
+  assert.deepEqual(e.ultimoDuvido.posicoesReveladas, [3, 7]);
+});
+
+test('duvidou ERRADO tambem carrega a lista, mas a tela nao mostra', () => {
+  // a carta continua na mesa, entao revelar estragaria a rodada.
+  // quem decide e o componente (duvidadorAcertou === false), nao o reducer.
+  let e = partidaCom(['Ana', 'Bia']);
+  e = duvidar(e, 'j1', 'j0', true, 2);
+  assert.equal(e.ultimoDuvido.duvidadorAcertou, false);
+  assert.equal(e.precisaNovoTema, false, 'carta segue na mesa');
 });
 
 test('conferidas zeram quando entra tema novo', () => {
@@ -183,6 +217,55 @@ test('ABRIR/FECHAR carta alterna o estado', () => {
   assert.equal(e.cartaAberta, true);
   e = reducer(e, { type: 'FECHAR_CARTA' });
   assert.equal(e.cartaAberta, false);
+});
+
+test('a fila entrega uma carta por rodada sem nova chamada', () => {
+  let e = partidaCom(['Ana', 'Bia']);
+  e = reducer(e, {
+    type: 'ENFILEIRAR_TEMAS',
+    temas: [
+      { tema: 'Top 10 A', top10: ['a'] },
+      { tema: 'Top 10 B', top10: ['b'] },
+    ],
+  });
+  assert.equal(e.filaTemas.length, 2);
+
+  e = reducer(e, { type: 'PUXAR_DA_FILA' });
+  assert.equal(e.tema.tema, 'Top 10 A');
+  assert.equal(e.filaTemas.length, 1, 'consumiu um da fila');
+
+  e = reducer(e, { type: 'PUXAR_DA_FILA' });
+  assert.equal(e.tema.tema, 'Top 10 B');
+  assert.equal(e.filaTemas.length, 0);
+
+  // fila vazia nao pode quebrar nem trocar a carta da mesa
+  const antes = e;
+  e = reducer(e, { type: 'PUXAR_DA_FILA' });
+  assert.equal(e, antes, 'sem fila, o estado fica igual');
+});
+
+test('puxar da fila conta como rodada nova (registra no historico)', () => {
+  let e = partidaCom(['Ana', 'Bia']);
+  const rodadaAntes = e.rodada;
+  e = reducer(e, { type: 'ENFILEIRAR_TEMAS', temas: [{ tema: 'Top 10 Novo', top10: ['a'] }] });
+  e = reducer(e, { type: 'PUXAR_DA_FILA' });
+
+  assert.equal(e.rodada, rodadaAntes + 1);
+  assert.ok(e.temasUsados.includes('Top 10 Novo'), 'entra no historico');
+  assert.equal(e.precisaNovoTema, false);
+});
+
+test('partida nova NAO repete as perguntas da anterior', () => {
+  let e = partidaCom(['Ana', 'Bia']);
+  e = reducer(e, { type: 'ENFILEIRAR_TEMAS', temas: [{ tema: 'Top 10 guardado', top10: ['a'] }] });
+  const usadosAntes = [...e.temasUsados];
+
+  e = reducer(e, { type: 'NOVA_PARTIDA' });
+  assert.deepEqual(e.temasUsados, usadosAntes, 'o historico sobrevive a nova partida');
+  assert.equal(e.filaTemas.length, 1, 'a fila tambem sobrevive');
+
+  e = reducer(e, { type: 'RESETAR' });
+  assert.deepEqual(e.temasUsados, usadosAntes, 'o historico sobrevive ate ao reset');
 });
 
 test('temas usados sao acumulados para nao repetir', () => {

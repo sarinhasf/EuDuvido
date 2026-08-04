@@ -40,8 +40,19 @@ export default function Mesa() {
 
   /* ---------------- busca de tema no Groq ---------------- */
 
-  const buscarTema = useCallback(async () => {
+  /**
+   * Traz a proxima carta. Se ainda ha temas na fila do lote anterior, usa um
+   * deles na hora - sem espera e sem risco de a API devolver algo repetido.
+   * So chama o Groq quando a fila esvazia, e ai baixa um lote inteiro.
+   */
+  const buscarTema = useCallback(async ({ forcarApi = false } = {}) => {
     if (buscando.current) return;
+
+    if (!forcarApi && estado.filaTemas.length > 0) {
+      dispatch({ type: 'PUXAR_DA_FILA' });
+      return;
+    }
+
     buscando.current = true;
     setCarregandoTema(true);
     try {
@@ -52,14 +63,20 @@ export default function Mesa() {
       });
       const dados = await r.json();
       if (dados?.aviso) setAviso(dados.aviso);
-      dispatch({ type: 'DEFINIR_TEMA', tema: { tema: dados.tema, top10: dados.top10 } });
+
+      const temas = Array.isArray(dados?.temas) ? dados.temas : [];
+      if (!temas.length) throw new Error('nenhum tema veio na resposta');
+
+      const [primeiro, ...resto] = temas;
+      if (resto.length) dispatch({ type: 'ENFILEIRAR_TEMAS', temas: resto });
+      dispatch({ type: 'DEFINIR_TEMA', tema: primeiro });
     } catch (e) {
       setAviso(`Não consegui buscar o tema: ${e.message}`);
     } finally {
       setCarregandoTema(false);
       buscando.current = false;
     }
-  }, [dispatch, estado.temasUsados]);
+  }, [dispatch, estado.temasUsados, estado.filaTemas.length]);
 
   // Sem jogadores (ex.: entrou direto na URL) -> volta pro cadastro.
   useEffect(() => {
