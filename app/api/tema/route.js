@@ -31,26 +31,35 @@ FORMATO (obrigatorio):
 5. Os 10 itens de uma lista devem ser distintos entre si.
 6. Escreva TUDO em portugues do Brasil.
 
-QUALIDADE DO TEMA:
-7. O campo "tema" comeca com "Top 10", tem no maximo 12 palavras e descreve um ranking OBJETIVO.
-   PROIBIDO gosto pessoal ("mais gostosos", "mais bonitos", "melhores de todos os tempos").
-8. Cultura geral acessivel: um grupo de amigos brasileiros tem que conseguir chutar nomes.
-   Evite nicho tecnico e dados muito recentes.
-9. Nao invente. Se voce nao tem certeza dos 10 nomes, troque de tema.
+TEMA DO DIA A DIA (a regra mais importante):
+7. O ranking tem que ser sobre a VIDA COTIDIANA do brasileiro: o que ele come, compra no
+   supermercado, usa em casa, assiste na TV, tem no celular, faz no fim de semana.
+   Pense em: marcas de prateleira, comida, produtos de limpeza, eletrodomesticos, lojas,
+   apps, tarefas de casa, lanche, festa, pet, roupa.
+8. FACIL DE RESPONDER: qualquer pessoa na mesa, sem ter estudado nada, tem que conseguir
+   chutar pelo menos 5 dos 10 itens de cabeca. Se o tema exige pesquisa, ele esta errado.
+9. PROIBIDO (nao gere nada disso, mesmo que a categoria sugira):
+   - historia, guerras, reis, imperios, datas, "os primeiros da historia", inventores;
+   - geografia de decoreba: capitais, rios, montanhas, desertos, paises por area/populacao;
+   - ciencia tecnica: elementos quimicos, formulas, especies com nome cientifico;
+   - estatistica de nicho, numeros de faturamento e dados de ano especifico.
+10. O campo "tema" comeca com "Top 10", tem no maximo 12 palavras e descreve um ranking
+    reconhecivel. PROIBIDO gosto pessoal ("mais gostosos", "mais bonitos", "melhores de
+    todos os tempos"). Use recortes de consumo e habito: "mais vendidos", "mais usados",
+    "mais pedidos", "que todo mundo tem em casa", "mais conhecidos".
+11. Nao invente. Se voce nao tem certeza dos 10 nomes, troque de tema.
 
-VARIEDADE (a parte mais importante):
-10. Os temas do lote devem ser de assuntos COMPLETAMENTE diferentes entre si.
-    Nada de dois temas de esporte, nem dois de musica, nem dois de geografia no mesmo lote.
-11. Fuja do obvio. Rankings de futebol, paises mais populosos e maiores rios ja apareceram
-    demais neste jogo - so use se o pedido apontar explicitamente pra isso.
-12. Varie o TIPO de ranking: tamanho, idade, velocidade, preco, quantidade, fama, ordem
-    cronologica. Nao faca o lote inteiro de "os maiores".
-13. Prefira o inesperado ao seguro: temas que arrancam um "boa!" da mesa valem mais
-    que o ranking que todo mundo ja sabe de cor.
-14. NUNCA repita nem crie variacao dos temas ja usados que o usuario listar.
+VARIEDADE:
+12. Os temas do lote devem ser de assuntos COMPLETAMENTE diferentes entre si.
+    Nada de dois temas de comida, nem dois de marca de supermercado, no mesmo lote.
+13. Varie o TIPO de ranking: mais vendido, mais usado, mais comum na casa, mais pedido,
+    mais caro, mais barato. Nao faca o lote inteiro de "os mais vendidos".
+14. Prefira o tema que faz a mesa rir e falar junto ("o que sempre tem na geladeira")
+    ao ranking seco de marca.
+15. NUNCA repita nem crie variacao dos temas ja usados que o usuario listar.
 
-Exemplo do formato (gere temas diferentes destes):
-{"temas":[{"tema":"Top 10 maiores campeoes do Brasileirao","top10":["Palmeiras","Flamengo","Santos","Corinthians","Sao Paulo","Fluminense","Cruzeiro","Vasco da Gama","Internacional","Gremio"]}]}`;
+Exemplo do formato e do NIVEL de dificuldade esperado (gere temas diferentes destes):
+{"temas":[{"tema":"Top 10 produtos do cafe da manha do brasileiro","top10":["Pao frances","Cafe","Leite","Manteiga","Queijo","Presunto","Achocolatado","Bolacha","Suco de laranja","Ovo mexido"]},{"tema":"Top 10 marcas de produto de limpeza mais conhecidas do Brasil","top10":["Ype","Omo","Veja","Cif","Pinho Sol","Brilhante","Bombril","Vanish","Mr Musculo","Ajax"]}]}`;
 
 /** Sorteia n itens distintos de uma lista. */
 function sortear(lista, n) {
@@ -80,6 +89,9 @@ mas voce escolhe o recorte exato dentro deles:
 
 ${roteiro}
 ${usados}
+
+Lembre: tudo tem que ser do dia a dia e facil de chutar de cabeca.
+Nada de historia, data, capital, rio ou dado tecnico.
 
 Responda apenas com o objeto JSON.`;
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Dialog from '@mui/material/Dialog';
@@ -13,6 +12,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import GavelRoundedIcon from '@mui/icons-material/GavelRounded';
 import { useAudio } from '../lib/AudioProvider';
+import SeletorJogador from './SeletorJogador';
 
 /**
  * Fluxo do "Duvido": quem duvidou, de quem duvidou e qual foi a resposta.
@@ -121,65 +121,5 @@ function Formulario({ jogadores, onFechar, onConferir }) {
         </Button>
       </DialogActions>
     </>
-  );
-}
-
-function SeletorJogador({ titulo, jogadores, selecionado, desabilitado, onSelecionar }) {
-  return (
-    <Box>
-      <Typography sx={{ mb: 1, fontFamily: 'var(--font-titulo)', fontWeight: 700, fontSize: '.95rem' }}>
-        {titulo}
-      </Typography>
-      <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 0.5 }}>
-        {jogadores.map((j) => {
-          const ativo = selecionado === j.id;
-          const bloqueado = desabilitado === j.id;
-          return (
-            <Stack
-              key={j.id}
-              spacing={0.4}
-              role="button"
-              tabIndex={bloqueado ? -1 : 0}
-              onClick={() => !bloqueado && onSelecionar(j.id)}
-              onKeyDown={(e) => e.key === 'Enter' && !bloqueado && onSelecionar(j.id)}
-              sx={{ alignItems: 'center',
-                width: 60,
-                flexShrink: 0,
-                cursor: bloqueado ? 'not-allowed' : 'pointer',
-                opacity: bloqueado ? 0.3 : 1,
-              }}
-            >
-              <Box
-                sx={{
-                  position: 'relative',
-                  width: '100%',
-                  aspectRatio: '330 / 454',
-                  borderRadius: 0.5,
-                  overflow: 'hidden',
-                  border: ativo ? '3px solid var(--dourado)' : '2px solid rgba(255,201,60,.22)',
-                  transform: ativo ? 'translateY(-3px)' : 'none',
-                  transition: 'transform .16s ease, border-color .16s ease',
-                }}
-              >
-                {j.carta?.src && (
-                  <Image src={j.carta.src} alt={j.nome} fill sizes="70px" style={{ objectFit: 'cover' }} />
-                )}
-              </Box>
-              <Typography
-                noWrap
-                sx={{
-                  maxWidth: '100%',
-                  fontSize: '.66rem',
-                  fontWeight: 700,
-                  color: ativo ? 'var(--dourado)' : 'var(--creme)',
-                }}
-              >
-                {j.nome}
-              </Typography>
-            </Stack>
-          );
-        })}
-      </Stack>
-    </Box>
   );
 }

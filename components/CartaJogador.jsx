@@ -19,6 +19,11 @@ export default function CartaJogador({
   naVez = false,
   vidasIniciais = 4,
   compacto = false,
+  // true enquanto a carta roda a animacao de saida antes de ser removida
+  // da mesa (ver .carta-saindo no globals.css)
+  saindo = false,
+  // avisa quando a animacao de saida terminou, pra mesa desmontar a carta
+  onFimDaSaida,
   // A mesa passa uma CSS var aqui pra poder encolher a carta por media query
   // de ALTURA (ver .mesa-rodape no globals.css). A tela de sorteio nao passa
   // nada e usa os tamanhos padrao abaixo.
@@ -34,6 +39,12 @@ export default function CartaJogador({
     <Stack
       spacing={0.6}
       onClick={onClick}
+      className={saindo ? 'carta-saindo' : undefined}
+      // as animacoes internas (coracoes, medalha) tambem borbulham ate aqui:
+      // so a queda da carta pode disparar a remocao
+      onAnimationEnd={(e) => {
+        if (saindo && e.target === e.currentTarget) onFimDaSaida?.();
+      }}
       sx={{ alignItems: 'center',
         width: largura,
         flexShrink: 0,

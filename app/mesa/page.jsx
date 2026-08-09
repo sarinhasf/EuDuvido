@@ -15,6 +15,7 @@ import Tooltip from '@mui/material/Tooltip';
 import GavelRoundedIcon from '@mui/icons-material/GavelRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import AutorenewRoundedIcon from '@mui/icons-material/AutorenewRounded';
+import SkipNextRoundedIcon from '@mui/icons-material/SkipNextRounded';
 
 import { useGame } from '../../lib/GameProvider';
 import { VIDAS_INICIAIS, PONTOS_VITORIA } from '../../lib/gameLogic';
@@ -23,9 +24,40 @@ import { useAudio } from '../../lib/AudioProvider';
 import CartaJogador from '../../components/CartaJogador';
 import CartaTema from '../../components/CartaTema';
 import DialogoDuvido from '../../components/DialogoDuvido';
+import DialogoPassar from '../../components/DialogoPassar';
 import ResultadoDuvido from '../../components/ResultadoDuvido';
 import SorteioInicial from '../../components/SorteioInicial';
 import FimDeJogo from '../../components/FimDeJogo';
+
+/**
+ * Quem ainda aparece no rodape da mesa.
+ *
+ * Zerou as vidas, a carta sai - mas nao no mesmo frame: ela continua montada
+ * rodando a animacao .carta-saindo (globals.css) pra mesa ver quem caiu, e so
+ * e removida quando o proprio navegador avisa que a animacao acabou.
+ *
+ * Amarrar no onAnimationEnd em vez de um setTimeout evita duplicar a duracao
+ * em dois lugares: mudar o tempo no CSS ja ajusta a remocao sozinho. E, por
+ * ser um evento, nao precisa de efeito nenhum aqui.
+ *
+ * Com 2 jogadores isso nunca chega a acontecer: eliminar um ja encerra a
+ * partida (fase 'fim') e esta tela nem renderiza.
+ */
+function useCartasNaMesa(jogadores) {
+  const [removidos, setRemovidos] = useState(() => new Set());
+
+  // Partida nova devolve as vidas de todo mundo. Zerar a lista aqui, durante a
+  // render, e o que impede as cartas de reaparecerem ja marcadas como
+  // removidas - e sumirem sem animacao na primeira eliminacao da partida
+  // seguinte.
+  if (removidos.size && jogadores.every((j) => j.vivo)) setRemovidos(new Set());
+
+  const aoTerminarQueda = useCallback((id) => {
+    setRemovidos((atual) => (atual.has(id) ? atual : new Set([...atual, id])));
+  }, []);
+
+  return [jogadores.filter((j) => j.vivo || !removidos.has(j.id)), aoTerminarQueda];
+}
 
 export default function Mesa() {
   const router = useRouter();
@@ -33,10 +65,15 @@ export default function Mesa() {
   const { tocar } = useAudio();
   const [carregandoTema, setCarregandoTema] = useState(false);
   const [duvidoAberto, setDuvidoAberto] = useState(false);
+  const [passarAberto, setPassarAberto] = useState(false);
   const [aviso, setAviso] = useState('');
   const buscando = useRef(false);
 
-  const { fase, jogadores, tema, cartaAberta, precisaNovoTema, ultimoDuvido, conferidas } = estado;
+  const { fase, jogadores, tema, cartaAberta, precisaNovoTema, ultimoDuvido, ultimoPasse, conferidas } =
+    estado;
+
+  // hook antes de qualquer return: as telas de sorteio/fim saem cedo da funcao
+  const [cartasNaMesa, aoTerminarQueda] = useCartasNaMesa(jogadores);
 
   /* ---------------- busca de tema no Groq ---------------- */
 
@@ -102,6 +139,14 @@ export default function Mesa() {
     tocar(resultado.acertou ? 'erro' : 'acerto');
     dispatch({ type: 'RESOLVER_DUVIDO', duvidadorId, duvidadoId, resposta, resultado });
     setDuvidoAberto(false);
+  }
+
+  function passar(jogadorId) {
+    const jogador = jogadores.find((j) => j.id === jogadorId);
+    // ultima vida -> som de eliminacao, senao o "azedo" de quem errou
+    tocar(jogador?.vidas === 1 ? 'eliminado' : 'erro');
+    dispatch({ type: 'PASSAR', jogadorId });
+    setPassarAberto(false);
   }
 
   function sair() {
@@ -254,6 +299,23 @@ export default function Mesa() {
               >
                 Duvido!
               </Button>
+              <Button
+                variant="outlined"
+                size="large"
+                startIcon={<SkipNextRoundedIcon />}
+                onClick={() => {
+                  tocar('clique');
+                  setPassarAberto(true);
+                }}
+                sx={{
+                  px: 3,
+                  color: 'var(--dourado)',
+                  borderColor: 'rgba(255,201,60,.45)',
+                  '&:hover': { borderColor: 'var(--dourado)', bgcolor: 'rgba(255,201,60,.08)' },
+                }}
+              >
+                Passar
+              </Button>
               <Tooltip title="Descartar esta carta e sortear outra">
                 <IconButton
                   onClick={() => {
@@ -286,12 +348,14 @@ export default function Mesa() {
           '&::-webkit-scrollbar': { height: 6 },
         }}
       >
-        {jogadores.map((j) => (
+        {cartasNaMesa.map((j) => (
           <CartaJogador
             key={j.id}
             jogador={j}
             vidasIniciais={VIDAS_INICIAIS}
             largura="var(--carta-jogador, 88px)"
+            saindo={!j.vivo}
+            onFimDaSaida={() => aoTerminarQueda(j.id)}
           />
         ))}
       </Stack>
@@ -303,9 +367,35 @@ export default function Mesa() {
         onConferir={conferir}
       />
 
+      <DialogoPassar
+        aberto={passarAberto}
+        jogadores={jogadores}
+        onFechar={() => setPassarAberto(false)}
+        onConfirmar={passar}
+      />
+
       {ultimoDuvido && (
         <ResultadoDuvido duvido={ultimoDuvido} onContinuar={() => dispatch({ type: 'LIMPAR_DUVIDO' })} />
       )}
+
+      {/* passar nao abre tela de resultado: so um aviso curto e o jogo segue */}
+      <Snackbar
+        open={Boolean(ultimoPasse)}
+        autoHideDuration={3500}
+        onClose={() => dispatch({ type: 'LIMPAR_PASSE' })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert
+          severity={ultimoPasse?.eliminado ? 'error' : 'warning'}
+          variant="filled"
+          onClose={() => dispatch({ type: 'LIMPAR_PASSE' })}
+          sx={{ maxWidth: 420 }}
+        >
+          {ultimoPasse?.eliminado
+            ? `${ultimoPasse?.nome} passou, perdeu a última vida e está fora!`
+            : `${ultimoPasse?.nome} passou e perdeu 1 vida (${ultimoPasse?.vidas} restantes).`}
+        </Alert>
+      </Snackbar>
 
       <Snackbar
         open={Boolean(aviso)}

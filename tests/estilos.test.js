@@ -40,3 +40,32 @@ test('quem esconde as cartas no mobile continua existindo', () => {
   assert.ok(/@media \(max-width: 599\.95px\)/.test(css), 'media query do mobile sumiu');
   assert.ok(regra('.so-desktop')?.includes('display'), '.so-desktop precisa esconder o elemento');
 });
+
+/**
+ * A remocao da carta do eliminado e disparada pelo onAnimationEnd da propria
+ * animacao de queda (ver useCartasNaMesa em app/mesa/page.jsx). Duas coisas
+ * nao podem faltar:
+ *  - a regra tem que existir e ter duracao (sem animacao, nenhum evento
+ *    dispara e a carta ficaria travada na mesa pra sempre);
+ *  - o fill-mode precisa segurar o ultimo frame, senao a carta pisca de volta
+ *    ao normal entre o fim da animacao e o desmonte.
+ */
+test('a carta do eliminado tem animacao de saida com fill-mode forwards', () => {
+  const saida = regra('.carta-saindo');
+  assert.ok(saida, 'regra .carta-saindo sumiu - a carta nunca seria removida da mesa');
+  assert.ok(/animation:/.test(saida), '.carta-saindo precisa de animation');
+  assert.ok(/\bforwards\b/.test(saida), '.carta-saindo precisa de fill-mode forwards');
+  assert.ok(/[\d.]+s/.test(saida), '.carta-saindo precisa de uma duracao');
+  assert.ok(/@keyframes sair-carta/.test(css), 'keyframes sair-carta sumiu');
+});
+
+test('a alternativa sem movimento tambem anima (senao a carta nunca sai)', () => {
+  assert.ok(
+    /@media \(prefers-reduced-motion: reduce\)/.test(css),
+    'falta o bloco de prefers-reduced-motion',
+  );
+  assert.ok(
+    /@keyframes apagar-carta/.test(css),
+    'sem animacao alternativa o onAnimationEnd nunca dispara pra quem pediu menos movimento',
+  );
+});

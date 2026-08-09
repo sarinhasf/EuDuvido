@@ -389,6 +389,45 @@ body {
   }
 }
 
+/* Saída da carta de quem foi eliminado.
+   A carta não some no mesmo frame em que o jogador zera as vidas: fica ~0.9s
+   rodando esta animação pra mesa ver quem caiu, e só depois é removida do
+   rodapé (a contagem do tempo fica no app/mesa/page.jsx).
+
+   O "forwards" aqui é proposital: a carta é desmontada logo em seguida, e sem
+   ele o último frame pisca de volta ao normal antes de sumir. */
+.carta-saindo {
+  animation: sair-carta 0.9s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+  pointer-events: none;
+}
+
+@keyframes sair-carta {
+  0% {
+    opacity: 1;
+    transform: none;
+  }
+  25% {
+    transform: translateY(-10px) rotate(-4deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(120px) rotate(18deg) scale(0.8);
+  }
+}
+
+/* Quem prefere menos movimento só vê a carta apagar. */
+@media (prefers-reduced-motion: reduce) {
+  .carta-saindo {
+    animation: apagar-carta 0.5s linear forwards;
+  }
+
+  @keyframes apagar-carta {
+    to {
+      opacity: 0;
+    }
+  }
+}
+
 /* roleta do sorteio inicial */
 .girando-sorteio {
   animation: chacoalhar 0.42s ease-in-out infinite;

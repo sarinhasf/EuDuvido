@@ -273,3 +273,75 @@ test('temas usados sao acumulados para nao repetir', () => {
   e = reducer(e, { type: 'DEFINIR_TEMA', tema: { tema: 'Top 10 dois', top10: [] } });
   assert.deepEqual(e.temasUsados, ['Top 10 teste', 'Top 10 dois']);
 });
+
+/* ------------------------------------------------------------------ *
+ * Passar a vez
+ * ------------------------------------------------------------------ */
+
+test('passar: jogador perde 1 vida e a carta continua na mesa', () => {
+  let e = partidaCom(['Ana', 'Bia', 'Caio']);
+  const temaAntes = e.tema;
+  e = reducer(e, { type: 'PASSAR', jogadorId: 'j1' });
+
+  assert.equal(vidas(e, 'j1'), VIDAS_INICIAIS - 1);
+  assert.equal(vidas(e, 'j0'), VIDAS_INICIAIS, 'os outros nao sao afetados');
+  assert.equal(pontos(e, 'j1'), 0, 'passar nao mexe no placar');
+  assert.deepEqual(e.tema, temaAntes, 'mesmo tema');
+  assert.equal(e.precisaNovoTema, false, 'nao pede carta nova');
+});
+
+test('passar: a vez vai pro proximo jogador vivo', () => {
+  let e = partidaCom(['Ana', 'Bia', 'Caio']);
+  e = reducer(e, { type: 'PASSAR', jogadorId: 'j1' });
+  assert.equal(e.vezIndex, 2);
+
+  e = reducer(e, { type: 'PASSAR', jogadorId: 'j2' });
+  assert.equal(e.vezIndex, 0, 'volta pro primeiro (circular)');
+});
+
+test('passar: registra o aviso e LIMPAR_PASSE apaga', () => {
+  let e = partidaCom(['Ana', 'Bia']);
+  e = reducer(e, { type: 'PASSAR', jogadorId: 'j0' });
+
+  assert.equal(e.ultimoPasse.nome, 'Ana');
+  assert.equal(e.ultimoPasse.vidas, VIDAS_INICIAIS - 1);
+  assert.equal(e.ultimoPasse.eliminado, false);
+
+  e = reducer(e, { type: 'LIMPAR_PASSE' });
+  assert.equal(e.ultimoPasse, null);
+});
+
+test('passar na ultima vida elimina e pode encerrar a partida', () => {
+  let e = partidaCom(['Ana', 'Bia']);
+  for (let i = 0; i < VIDAS_INICIAIS; i += 1) {
+    e = reducer(e, { type: 'PASSAR', jogadorId: 'j0' });
+  }
+
+  assert.equal(vidas(e, 'j0'), 0);
+  assert.equal(e.jogadores[0].vivo, false);
+  assert.equal(e.ultimoPasse.eliminado, true);
+  assert.equal(e.fase, 'fim', 'sobrou so a Bia');
+  assert.equal(e.vencedorId, 'j1');
+});
+
+test('passar de jogador eliminado ou inexistente nao muda nada', () => {
+  let e = partidaCom(['Ana', 'Bia', 'Caio']);
+  for (let i = 0; i < VIDAS_INICIAIS; i += 1) {
+    e = reducer(e, { type: 'PASSAR', jogadorId: 'j0' });
+  }
+  const depoisDaEliminacao = e;
+
+  assert.equal(reducer(e, { type: 'PASSAR', jogadorId: 'j0' }), depoisDaEliminacao);
+  assert.equal(reducer(e, { type: 'PASSAR', jogadorId: 'nao-existe' }), depoisDaEliminacao);
+  assert.equal(vidas(e, 'j0'), 0, 'vidas nao ficam negativas');
+});
+
+test('carta nova limpa o aviso de passe', () => {
+  let e = partidaCom(['Ana', 'Bia']);
+  e = reducer(e, { type: 'PASSAR', jogadorId: 'j0' });
+  e = reducer(e, {
+    type: 'DEFINIR_TEMA',
+    tema: { tema: 'Top 10 outro', top10: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'] },
+  });
+  assert.equal(e.ultimoPasse, null);
+});
